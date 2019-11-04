@@ -70,6 +70,9 @@ class TANSimulator:
         """
         return X[:, 3][:, None] - dem(X[:, 0][:, None], X[:, 1][:, None])
 
+    def noise_model(self, Y):
+        return self.observation_std * self.rng.randn(*Y.shape)
+
     def _simulate_system(self):
         """
         Simulates the TAN system
@@ -81,5 +84,18 @@ class TANSimulator:
             process_noise = self.process_std[:, None] * self.rng.randn(6, 1)
             X[t + 1, :] = (state_evolution + process_noise)[:, 0]
 
-        Y = self.observation_model(X) + self.observation_std * self.rng.randn(self.simulation_steps + 1, 1)
+        Y = self.observation_model(X)
+        Y += self.noise_model(Y)
         self.X, self.Y = X, Y
+
+
+class ExplosiveTANSimulator(TANSimulator):
+    def noise_model(self, Y):
+        u = self.rng.rand(Y.shape[0])
+        noise = np.zeros_like(Y)
+        norm_loc = (u > 0.01)
+        t_loc = (u <= 0.01)
+        noise[norm_loc] = self.rng.randn(norm_loc.sum(), Y.shape[1])
+        noise[t_loc] = self.rng.standard_t(df=0.5, size=(t_loc.sum(), Y.shape[1]))
+        return self.observation_std * noise
+

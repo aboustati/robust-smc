@@ -16,8 +16,6 @@ class SMCSampler(ABC):
         self.x_trajectories = []
         self.logw = []
         self.initialized = False
-        self.x_samples.append(self.proposal_sample(self.x_init))
-        self.logw = self.compute_logw(0)
         self.seed = seed
         self.rng = np.random.RandomState(seed)
 
@@ -56,7 +54,9 @@ class SMCSampler(ABC):
         pass
 
     def sample(self):
-        for t in range(self.time_steps):
+        self.x_samples.append(self.proposal_sample(self.x_init))
+        self.logw.append(self.compute_logw(0))
+        for t in range(self.time_steps - 1):
             # Resample
             w = self.get_normalised_weights(self.logw[-1])
             self.x_trajectories.append(self.multinomial_resampling(w, self.x_samples[-1]))
@@ -64,6 +64,12 @@ class SMCSampler(ABC):
             self.x_samples.append(self.proposal_sample(self.x_trajectories[-1]))
             # Weight
             self.logw.append(self.compute_logw(t + 1))
+
+    def reset(self):
+        self.x_samples = []
+        self.x_trajectories = []
+        self.logw = []
+        self.initialized = False
 
     @staticmethod
     def get_normalised_weights(logw):
@@ -76,8 +82,8 @@ class SMCSampler(ABC):
 
 
 class LinearDiagonalGaussianBPF(SMCSampler):
-    def __init__(self, time_steps, transition_matrix, prior_std, x_init, observation_model, num_samples=100, seed=None):
-        super().__init__(time_steps, num_samples=num_samples, x_init=x_init, seed=seed)
+    def __init__(self, data, transition_matrix, prior_std, x_init, observation_model, num_samples=100, seed=None):
+        super().__init__(data, num_samples=num_samples, x_init=x_init, seed=seed)
         self.transition_matrix = transition_matrix
         self.prior_std = prior_std
         self.observation_model = observation_model
@@ -98,5 +104,4 @@ class LinearDiagonalGaussianBPF(SMCSampler):
     def compute_logw(self, t):
         observed = np.tile(self.data[t], self.num_samples)[:, None]
         predicted = self.observation_model(self.x_samples[-1])
-        norm.logpdf(observed, predicted)
-        return
+        return norm.logpdf(observed, predicted)
