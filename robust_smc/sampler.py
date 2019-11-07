@@ -4,6 +4,8 @@ import numpy as np
 from scipy.special import logsumexp
 from scipy.stats import norm
 
+from .robust_likelihoods import RobustGaussian
+
 
 class SMCSampler(ABC):
     def __init__(self, data, num_samples=100, x_init=None, seed=None):
@@ -82,10 +84,12 @@ class SMCSampler(ABC):
 
 
 class LinearDiagonalGaussianBPF(SMCSampler):
-    def __init__(self, data, transition_matrix, prior_std, x_init, observation_model, num_samples=100, seed=None):
+    def __init__(self, data, transition_matrix, prior_std, x_init, observation_model,
+                 noise_std=1.0,  num_samples=100, seed=None):
         super().__init__(data, num_samples=num_samples, x_init=x_init, seed=seed)
         self.transition_matrix = transition_matrix
         self.prior_std = prior_std
+        self.noise_std = noise_std
         self.observation_model = observation_model
 
     def proposal_sample(self, x_prev):
@@ -104,4 +108,17 @@ class LinearDiagonalGaussianBPF(SMCSampler):
     def compute_logw(self, t):
         observed = np.tile(self.data[t], self.num_samples)[:, None]
         predicted = self.observation_model(self.x_samples[-1])
-        return norm.logpdf(observed, predicted)
+        return norm.logpdf(observed, loc=predicted, scale=self.noise_std)
+
+
+class RobustifiedLinearDiagonalGaussianBPF(LinearDiagonalGaussianBPF):
+    def __init__(self, data, beta, transition_matrix, prior_std, x_init, observation_model,
+                 noise_std=1.0, num_samples=100, seed=None):
+        super().__init__(data, transition_matrix=transition_matrix, prior_std=prior_std, x_init=x_init,
+                         noise_std=noise_std, observation_model=observation_model, num_samples=num_samples, seed=seed)
+        self.robust_likelihood = RobustGaussian(beta)
+
+    def compute_logw(self, t):
+        observed = np.tile(self.data[t], self.num_samples)[:, None]
+        predicted = self.observation_model(self.x_samples[-1])
+        return self.robust_likelihood.log_likelihood(observed, loc=predicted, scale=self.noise_std)
