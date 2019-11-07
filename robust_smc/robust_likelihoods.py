@@ -10,7 +10,7 @@ class RobustLikelihood(ABC):
         self.beta = beta
 
     def annealed_term(self, y, *args, **kwargs):
-        return self.base_distribution.pdf(x, *args, **kwargs) ** self.beta
+        return self.base_distribution.pdf(y, *args, **kwargs) ** self.beta
 
     @abstractmethod
     def integral_term(self, y, *args, **kwargs):
