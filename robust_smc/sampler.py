@@ -106,9 +106,9 @@ class LinearDiagonalGaussianBPF(SMCSampler):
         return samples
 
     def compute_logw(self, t):
-        observed = np.tile(self.data[t], self.num_samples)[:, None]
+        observed = np.tile(self.data[t], (self.num_samples, 1))
         predicted = self.observation_model(self.x_samples[-1])
-        return norm.logpdf(observed, loc=predicted, scale=self.noise_std)
+        return np.sum(norm.logpdf(observed, loc=predicted, scale=self.noise_std), axis=1)[:, None]
 
 
 class RobustifiedLinearDiagonalGaussianBPF(LinearDiagonalGaussianBPF):
