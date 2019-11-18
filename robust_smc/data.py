@@ -154,4 +154,3 @@ class ExplosiveTANSimulator(TANSimulator):
         noise[norm_loc] = self.rng.randn(norm_loc.sum(), Y.shape[1])
         noise[t_loc] = self.rng.standard_t(df=0.5, size=(t_loc.sum(), Y.shape[1]))
         return self.observation_std * noise
-

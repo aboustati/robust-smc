@@ -60,7 +60,7 @@ class SMCSampler(ABC):
         self.logw.append(self.compute_logw(0))
         for t in range(self.time_steps - 1):
             # Resample
-            w = self.get_normalised_weights(self.logw[-1])
+            w = self.normalised_weights(self.logw[-1])
             self.x_trajectories.append(self.multinomial_resampling(w, self.x_samples[-1]))
             # Sample
             self.x_samples.append(self.proposal_sample(self.x_trajectories[-1]))
@@ -74,13 +74,21 @@ class SMCSampler(ABC):
         self.initialized = False
 
     @staticmethod
-    def get_normalised_weights(logw):
+    def normalised_weights(logw):
         """
         Compute normalised weights from log-weights
         :param logw: log-weights Nx1 numpy array
         :return: Nx1 numpy array
         """
         return np.exp(logw - logsumexp(logw))
+
+    @staticmethod
+    def effective_sample_size(logw):
+        """
+        COmpute the effective sample size from importance weights
+        :param logw: log-weights Nx1 numpy array
+        """
+        return 1 / np.sum(SMCSampler.normalised_weights(logw) ** 2)
 
 
 class LinearDiagonalGaussianBPF(SMCSampler):
