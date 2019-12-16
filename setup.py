@@ -22,5 +22,5 @@ setup(
     author_email='ayman.boustati@outlook.com',
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
     python_requires='>=3.7',
-    install_requires=['numpy', 'scipy']
+    install_requires=['numpy', 'scipy', 'tqdm']
 )
