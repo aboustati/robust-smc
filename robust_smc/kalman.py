@@ -1,7 +1,5 @@
 import numpy as np
 
-from tqdm import trange
-
 
 class Kalman:
     def __init__(self, data, transition_matrix, transition_cov, observation_matrix, observation_cov, m_0, P_0):
@@ -44,12 +42,12 @@ class Kalman:
         self.filter_means = [self.m_0]
         self.filter_covs = [self.P_0]
         self.marginal_covs = []
-        for t in trange(self.data.shape[0]):
+        for t in range(self.data.shape[0]):
             m_bar, P_bar = self.one_step_prediction(self.filter_means[-1], self.filter_covs[-1])
 
             # Update step
             y = self.data[t]
-            if not np.isnan(y):
+            if not np.isnan(y).any():
                 v = y[:, None] - self.observation_matrix @ m_bar
                 S = self.observation_matrix @ P_bar @ self.observation_matrix.T + self.observation_cov
                 K = P_bar @ self.observation_matrix.T @ np.linalg.inv(S)
