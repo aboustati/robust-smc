@@ -4,7 +4,7 @@ import numpy as np
 from scipy.special import logsumexp
 from scipy.stats import norm
 
-from .robust_likelihoods import RobustGaussian
+from .robust_likelihoods import BetaRobustGaussian
 
 
 class SMCSampler(ABC):
@@ -160,7 +160,7 @@ class RobustifiedLinearGaussianBPF(LinearGaussianBPF):
         """
         super().__init__(data, transition_matrix=transition_matrix, transition_cov=transition_cov, X_init=X_init,
                          observation_cov=observation_cov, observation_model=observation_model, num_samples=num_samples, seed=seed)
-        self.robust_likelihood = RobustGaussian(beta)
+        self.robust_likelihood = BetaRobustGaussian(beta)
 
     def compute_logw(self, t):
         """

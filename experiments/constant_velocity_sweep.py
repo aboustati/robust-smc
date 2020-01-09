@@ -114,5 +114,3 @@ if __name__ == '__main__':
         results = run(NUM_RUNS, contamination)
         pickle_save(f'./results/constant-velocity/beta-sweep-contamination-{contamination}.pk', results)
 
-
-

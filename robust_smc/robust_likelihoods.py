@@ -4,7 +4,7 @@ import numpy as np
 from scipy.stats import norm
 
 
-class RobustLikelihood(ABC):
+class BetaRobustLikelihood(ABC):
     def __init__(self, base_distribution, beta):
         self.base_distribution = base_distribution
         self.beta = beta
@@ -26,7 +26,7 @@ class RobustLikelihood(ABC):
         return lik
 
 
-class RobustGaussian(RobustLikelihood):
+class BetaRobustGaussian(BetaRobustLikelihood):
     def __init__(self, beta, compute_integral_term=False):
         super().__init__(norm, beta)
         self.compute_integral_term = compute_integral_term
@@ -38,3 +38,4 @@ class RobustGaussian(RobustLikelihood):
             integral += ((self.beta + 1) * (2 * np.pi * sigma_squared)) ** (-self.beta / 2)  # D
             integral = np.prod(integral)
         return integral
+
