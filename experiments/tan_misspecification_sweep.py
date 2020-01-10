@@ -11,7 +11,7 @@ from experiment_utilities import pickle_save
 # Experiment Settings
 NUM_RUNS = 100
 BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 0.8]
-FREQUENCIES = [0, 1, 2, 3, 4, 5, 6]
+FREQUENCIES = [0, 1, 2]
 
 # Sampler Settings
 NUM_LATENT = 6
@@ -78,7 +78,7 @@ def compute_mse(simulator, sampler):
 
 
 def run(runs, num_frequencies):
-    process_std = np.array([1., 1., 3., 0.145, 0.228, 1.15])
+    process_std = None
 
     simulator = TANSimulator(
         final_time=FINAL_TIME,

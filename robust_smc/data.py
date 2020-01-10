@@ -16,27 +16,29 @@ def peaks(x, y):
     return 200 * (first_term + second_term + third_term)
 
 
-def dem(x, y):
+def dem(x, y, num_frequencies=4):
     """
     Synthetic Digital Elevation Model (DEM) map
     :param x: x coordinates Nx1 numpy array
     :param y: y coordinates Nx1 numpy array
     :return: z coordinates Nx1 numpy array
     """
-    a = np.array([300, 80, 60, 40, 20, 10])[None, :]  # 1x6
-    omega = np.array([5, 10, 20, 30, 80, 150])[None, :]  # 1x6
-    omega_bar = np.array([4, 10, 20, 40, 90, 150])[None, :]  # 1x6
+    a = np.array([300, 80, 60, 40, 20, 10])[None, :num_frequencies]  # 1x6
+    omega = np.array([5, 10, 20, 30, 80, 150])[None, :num_frequencies]  # 1x6
+    omega_bar = np.array([4, 10, 20, 40, 90, 150])[None, :num_frequencies]  # 1x6
     q = 3 / (2.96 * 1e4)
+    # q = 0.5
     peak = peaks(q * x, q * y)
     fourier = np.sum(a * np.sin(omega * q * x) * np.cos(omega_bar * q * x), axis=1)[:, None]
     return peak + fourier
+    # return fourier
 
 
 class TANSimulator:
     """
     Terrain Aided Navigation (TAN) simulator. Taken from Merlinge et. al. 2019
     """
-    def __init__(self, final_time, time_step=0.1, observation_std=5,
+    def __init__(self, final_time, time_step=0.1, observation_std=5, num_frequencies=6,
                  X0=None, transition_matrix=None, process_std=None, seed=None):
         """
         :param final_time: final time period
@@ -49,21 +51,25 @@ class TANSimulator:
         """
         self.final_time = final_time
         self.time_step = time_step
-        self.X0 = X0 or np.array([-3.0 * 1e3, -19.2 * 1e3, 1.1 * 1e3, 211.5, 215.3, 0.0])
+        if X0 is None:
+            # X0 = np.array([-3.0 * 1e3, -19.2 * 1e3, 1.1 * 1e3, 211.5, 215.3, 0.0])
+            # X0 = np.array([-7.5 * 1e3, 5.0 * 1e3, 1.1 * 1e3, 22.15, -60.53, 0.0])
+            X0 = np.array([-7.5 * 1e3, 5.0 * 1e3, 1.1 * 1e3, 88.15, -60.53, 0.0])
+        self.X0 = X0
         self.transition_matrix = transition_matrix or np.vstack(
             [np.hstack([np.eye(3), time_step * np.eye(3)]), np.hstack([0 * np.eye(3), np.eye(3)])]
         )
         self.simulation_steps = int(final_time / time_step)
         self.observation_std = observation_std
+        self.num_frequencies = num_frequencies
         if process_std is None:
-            process_std = np.array([0.1, 0.1, 0.3, 1.45 * 1e-2, 2.28 * 1e-2, 11.5 * 1e-2])
+            process_std = np.array([0.1, 0.1, 0.3, 1.45 * 1e-2, 2.28 * 1e-2, 11.5 * 1e-2]) * 20
         self.process_std = process_std
         self.seed = seed
         self.rng = np.random.RandomState(self.seed)
         self._simulate_system()
 
-    @staticmethod
-    def observation_model(X):
+    def observation_model(self, X):
         """
         TANSimulator observation model
 
@@ -72,7 +78,7 @@ class TANSimulator:
         :param X: Nx6 numpy array
         :return: z-coordinates
         """
-        return X[:, 2][:, None] - dem(X[:, 0][:, None], X[:, 1][:, None])
+        return X[:, 2][:, None] - dem(X[:, 0][:, None], X[:, 1][:, None], self.num_frequencies)
 
     def noise_model(self, Y):
         return self.observation_std * self.rng.randn(*Y.shape)
@@ -91,6 +97,11 @@ class TANSimulator:
         Y = self.observation_model(X)
         Y += self.noise_model(Y)
         self.X, self.Y = X, Y
+
+    def renoise(self):
+        Y = self.observation_model(self.X)
+        Y += self.noise_model(Y)
+        return Y
 
 
 class LinearTANSimulator(TANSimulator):
