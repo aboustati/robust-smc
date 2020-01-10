@@ -106,5 +106,9 @@ venv.bak/
 # pickle files
 *.pk
 
-# PDFs
+# Figures
 *.pdf
+*.png
+
+# Pycharm
+.idea/
