@@ -62,8 +62,12 @@ class Smoother(ABC):
         """
         Run smoother to compute smooth trajectories
         """
-        w = self.sampler.normalised_weights(self.sampler.logw[-1])
-        x = self.sampler.multinomial_resampling(w, self.sampler.X_trajectories[-1])[:self.num_samples]
+        w = self.sampler.normalised_weights(self.sampler.logw[-1]).reshape((1, -1))
+        idx = self.categorical_sampling(np.broadcast_to(w, shape=(self.num_samples, w.shape[1])))
+        # print(idx.shape)
+        x = self.sampler.X_samples[-1][idx].copy()
+        # x = self.sampler.multinomial_resampling(w, self.sampler.X_trajectories[-1])[:self.num_samples]
+
         self.smoother_samples = [x]
         for t in trange(len(self.sampler.X_samples) - 1, 0, -1):
             self.smoother_samples.append(self.smoothing_step(t - 1, self.smoother_samples[-1]))

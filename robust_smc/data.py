@@ -52,9 +52,8 @@ class TANSimulator:
         self.final_time = final_time
         self.time_step = time_step
         if X0 is None:
-            # X0 = np.array([-3.0 * 1e3, -19.2 * 1e3, 1.1 * 1e3, 211.5, 215.3, 0.0])
-            # X0 = np.array([-7.5 * 1e3, 5.0 * 1e3, 1.1 * 1e3, 22.15, -60.53, 0.0])
             X0 = np.array([-7.5 * 1e3, 5.0 * 1e3, 1.1 * 1e3, 88.15, -60.53, 0.0])
+            # X0 = np.array([0.0, 0.0, 1.1 * 1e3, 88.15, -60.53, 0.0])
         self.X0 = X0
         self.transition_matrix = transition_matrix or np.vstack(
             [np.hstack([np.eye(3), time_step * np.eye(3)]), np.hstack([0 * np.eye(3), np.eye(3)])]
@@ -102,6 +101,21 @@ class TANSimulator:
         Y = self.observation_model(self.X)
         Y += self.noise_model(Y)
         return Y
+    
+    
+class SpecifiedTanSimulator(TANSimulator):
+    def observation_model(self, X):
+        """
+        TANSimulator observation model
+
+        m = z - DEM(x, y)
+
+        :param X: Nx6 numpy array
+        :return: z-coordinates
+        """
+        height = X[:, 2][:, None] - dem(X[:, 0][:, None], X[:, 1][:, None], self.num_frequencies)
+        distance = np.sqrt(np.sum((X[:, :2] - self.X0[:2][None, :]) ** 2, axis=1))[:, None]
+        return np.concatenate([height, distance], axis=-1)
 
 
 class LinearTANSimulator(TANSimulator):
@@ -119,17 +133,29 @@ class LinearTANSimulator(TANSimulator):
         return X[:, :3].copy()
 
 
-class ExplosiveTANSimulator(TANSimulator):
+class ExplosiveTANSimulator(SpecifiedTanSimulator):
     """
     Terrain Aided Navigation (TAN) simulator with explosive noise. Taken from Merlinge et. al. 2019
     """
+    def __init__(self, final_time, time_step=0.1, observation_std=5, contamination_probability=0.05,
+                 degrees_of_freedom=1, num_frequencies=6, X0=None,
+                 transition_matrix=None, process_std=None, seed=None):
+
+        self.contamination_probability = contamination_probability
+        self.degrees_of_freedom = degrees_of_freedom
+
+        super().__init__(final_time=final_time, time_step=time_step, observation_std=observation_std,
+                         num_frequencies=num_frequencies, X0=X0, transition_matrix=transition_matrix,
+                         process_std=process_std, seed=seed)
+
     def noise_model(self, Y):
         u = self.rng.rand(Y.shape[0])
         noise = np.zeros_like(Y)
-        norm_loc = (u > 0.05)
-        t_loc = (u <= 0.05)
+        norm_loc = (u > self.contamination_probability)
+        t_loc = (u <= self.contamination_probability)
+        self.contamination_locations = np.argwhere(t_loc)
         noise[norm_loc] = self.rng.randn(norm_loc.sum(), Y.shape[1])
-        noise[t_loc] = self.rng.standard_t(df=0.5, size=(t_loc.sum(), Y.shape[1]))
+        noise[t_loc] = self.rng.standard_t(df=self.degrees_of_freedom, size=(t_loc.sum(), Y.shape[1]))
         return self.observation_std * noise
 
 
