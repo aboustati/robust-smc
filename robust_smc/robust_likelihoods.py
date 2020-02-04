@@ -10,9 +10,9 @@ class BetaRobustLikelihood(ABC):
         self.beta = beta
 
     def annealed_term(self, y, *args, **kwargs):
-        annealed = self.base_distribution.pdf(y, *args, **kwargs) ** self.beta
-        annealed = np.prod(annealed, axis=1)
-        return annealed
+        annealed = self.beta * self.base_distribution.logpdf(y, *args, **kwargs)
+        annealed = np.sum(annealed, axis=1)
+        return np.exp(annealed)
 
     @abstractmethod
     def integral_term(self, y, *args, **kwargs):
@@ -39,3 +39,14 @@ class BetaRobustGaussian(BetaRobustLikelihood):
             integral = np.prod(integral)
         return integral
 
+
+class BetaRobustAsymmetricGaussian(BetaRobustGaussian):
+    def annealed_term(self, y, loc, scale_1, scale_2, **kwargs):
+        idx_2 = y > loc
+        annealed = self.beta * self.base_distribution.logpdf(y, loc=loc, scale=scale_1, **kwargs)
+        annealed_2 = self.beta * self.base_distribution.logpdf(y, loc=loc, scale=scale_2, **kwargs)
+
+        annealed[idx_2] = annealed_2[idx_2]
+        annealed = np.sum(annealed, axis=1)
+
+        return np.exp(annealed)

@@ -1,3 +1,5 @@
+from scipy.stats import levy_stable
+
 import numpy as np
 
 from numpy.linalg import cholesky
@@ -53,7 +55,6 @@ class TANSimulator:
         self.time_step = time_step
         if X0 is None:
             X0 = np.array([-7.5 * 1e3, 5.0 * 1e3, 1.1 * 1e3, 88.15, -60.53, 0.0])
-            # X0 = np.array([0.0, 0.0, 1.1 * 1e3, 88.15, -60.53, 0.0])
         self.X0 = X0
         self.transition_matrix = transition_matrix or np.vstack(
             [np.hstack([np.eye(3), time_step * np.eye(3)]), np.hstack([0 * np.eye(3), np.eye(3)])]
@@ -155,7 +156,7 @@ class ExplosiveTANSimulator(SpecifiedTanSimulator):
         t_loc = (u <= self.contamination_probability)
         self.contamination_locations = np.argwhere(t_loc)
         noise[norm_loc] = self.rng.randn(norm_loc.sum(), Y.shape[1])
-        noise[t_loc] = self.rng.standard_t(df=self.degrees_of_freedom, size=(t_loc.sum(), Y.shape[1]))
+        noise[t_loc] = self.rng.standard_t(df=self.degrees_of_freedom, size=(t_loc.sum(), 1))
         return self.observation_std * noise
 
 
@@ -185,14 +186,14 @@ class ConstantVelocityModel:
         self.transition_matrix = transition_matrix
         self.observation_matrix = np.eye(2, 4)
 
-        off_diagonal = (self.time_step ** 2 / 2) * np.eye(self.dim_Y)
-        upper_diagonal = (self.time_step ** 3 / 3) * np.eye(self.dim_Y)
-        lower_diagonal = self.time_step * np.eye(self.dim_Y)
+        off_diagonal = (self.time_step ** 2 / 2) * np.eye(2)
+        upper_diagonal = (self.time_step ** 3 / 3) * np.eye(2)
+        lower_diagonal = self.time_step * np.eye(2)
         self.process_cov = np.vstack([np.hstack([upper_diagonal, off_diagonal]),
                                       np.hstack([off_diagonal, lower_diagonal])])
 
         self.initial_cov = np.eye(self.dim_X)
-        self.initial_state = np.array([140., 140., 50., 0.])[:, None] * self.rng.randn(self.dim_X, 1)
+        self.initial_state = np.array([140., 140., 50., 0.])[:, None]
 
     def _simulate_system(self):
         L = cholesky(self.process_cov)
@@ -230,6 +231,141 @@ class ConstantVelocityModel:
 
         return np.stack(Y).squeeze(axis=-1)
 
+
+class AsymmetricConstantVelocity(ConstantVelocityModel):
+    def _simulate_system(self):
+        L = cholesky(self.process_cov)
+        R = cholesky(self.observation_cov)
+
+        X = [self.initial_state + cholesky(self.initial_cov) @ self.rng.randn(self.dim_X, 1)]
+        Y = [self.observation_matrix @ X[-1] + R @ self.rng.randn(self.dim_Y, 1)]
+
+        for _ in range(self.simulation_steps - 1):
+            X_new = self.transition_matrix @ X[-1] + L @ self.rng.randn(self.dim_X, 1)
+            Y_new = self.observation_matrix @ X_new
+
+            p = self.rng.rand()
+            if p < 0.5:
+                noise = -1 * np.abs(R @ self.rng.randn(self.dim_Y, 1))
+            else:
+                noise = 1 * self.explosion_scale * np.abs(R @ self.rng.randn(self.dim_Y, 1))
+
+            u = self.rng.rand()
+            if u < self.contamination_probability:
+                Y_new += self.rng.exponential(1e3) * noise
+            else:
+                Y_new += noise
+
+            X.append(X_new)
+            Y.append(Y_new)
+
+        self.X = np.stack(X).squeeze(axis=-1)
+        self.Y = np.stack(Y).squeeze(axis=-1)
+
+    def renoise(self):
+        R = cholesky(self.observation_cov)
+
+        Y = []
+        for X in self.X:
+            Y_new = self.observation_matrix @ X[:, None]
+            p = self.rng.rand()
+            if p < 0.5:
+                noise = -1 * np.abs(R @ self.rng.randn(self.dim_Y, 1))
+            else:
+                noise = 1 * self.explosion_scale * np.abs(R @ self.rng.randn(self.dim_Y, 1))
+
+            u = self.rng.rand()
+            if u < self.contamination_probability:
+                Y_new += self.rng.exponential(1e2) * noise
+            else:
+                Y_new += noise
+
+            Y.append(Y_new)
+
+        return np.stack(Y).squeeze(axis=-1)
+
+
+class SensorLocalisation:
+    def __init__(self, final_time, time_step=0.1, observation_cov=None, explosion_scale=20.0, seed=None):
+        self.final_time = final_time
+        self.time_step = time_step
+        self.simulation_steps = int(final_time / time_step)
+        self.observation_cov = np.eye(4) if observation_cov is None else observation_cov
+        self.explosion_scale = explosion_scale
+        self.seed = seed
+        self.rng = np.random.RandomState(seed)
+        self._build_system()
+        self._simulate_system()
+
+    def _build_system(self):
+        self.dim_X = 4
+        self.dim_Y = 4
+
+        transition_matrix = np.eye(self.dim_X)
+        transition_matrix[2, 2] = transition_matrix[3, 3] = 0.99
+        transition_matrix[0, 2] = transition_matrix[1, 3] = self.time_step
+        self.transition_matrix = transition_matrix
+
+        policy = np.zeros((self.dim_X, self.dim_X))
+        policy[2, 0] = policy[3, 1] = -0.0134 / 2
+        policy[2, 2] = policy[3, 3] = -0.0381 / 2
+        self.policy = policy
+
+        off_diagonal = (self.time_step ** 2 / 2) * np.eye(2)
+        upper_diagonal = (self.time_step ** 3 / 3) * np.eye(2)
+        lower_diagonal = self.time_step * np.eye(2)
+        self.process_cov = np.vstack([np.hstack([upper_diagonal, off_diagonal]),
+                                      np.hstack([off_diagonal, lower_diagonal])])
+
+        self.initial_cov = np.eye(self.dim_X)
+        self.initial_state = np.array([200, -50.0, 10000., 15.])[:, None]
+        self.target_state = np.array([0., 0., 0., 0.])[:, None]
+        self.sensor_locations = np.array(
+            [[0. , -100],
+             [0. ,  100],
+             [2000, -100],
+             [2000,  100]]
+        )
+
+    def observation_model(self, X):
+        norm = np.sum((X[None, :2] - self.sensor_locations) ** 2, axis=-1)
+        return 10 * np.log10((1 / norm) + 1e-9)
+
+    def _simulate_system(self):
+        L = cholesky(self.process_cov)
+        R = cholesky(self.observation_cov)
+
+        X0 = self.initial_state + self.policy @ (self.initial_state - self.target_state)
+        X0 = X0 + cholesky(self.initial_cov) @ self.rng.randn(self.dim_X, 1)
+        X = [X0]
+        Y = [self.observation_model(X[-1].squeeze())[:, None] + R @ self.rng.randn(self.dim_Y, 1)]
+
+        for _ in range(self.simulation_steps - 1):
+            X_new = self.transition_matrix @ X[-1] + self.policy @ (X[-1] - self.target_state)
+            X_new = X_new + L @ self.rng.randn(self.dim_X, 1)
+            Y_new = self.observation_model(X_new.squeeze())[:, None] + R @ self.rng.randn(self.dim_Y, 1)
+
+            u = self.rng.rand()
+            if u < 0.01:
+                Y_new += levy_stable.rvs(alpha=0.9, beta=0)
+
+            X.append(X_new)
+            Y.append(Y_new)
+
+        self.X = np.stack(X).squeeze(axis=-1)
+        self.Y = np.stack(Y).squeeze(axis=-1)
+
+    def renoise(self):
+        R = cholesky(self.observation_cov)
+
+        Y = []
+        for X in self.X:
+            Y_new = self.observation_model(X.squeeze())[:, None] + R @ self.rng.randn(self.dim_Y, 1)
+            Y_new[-1, :] = Y_new[-1, :] + levy_stable.rvs(alpha=0.5, beta=0)
+
+            Y.append(Y_new)
+
+        return np.stack(Y).squeeze(axis=-1)
 
 
 

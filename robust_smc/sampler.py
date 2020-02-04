@@ -2,9 +2,11 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 from scipy.special import logsumexp
-from scipy.stats import norm
+from scipy.stats import norm, t
 
-from .robust_likelihoods import BetaRobustGaussian
+from .robust_likelihoods import BetaRobustGaussian, BetaRobustAsymmetricGaussian
+
+student = t
 
 
 class SMCSampler(ABC):
@@ -143,6 +145,85 @@ class LinearGaussianBPF(SMCSampler):
         return logw
 
 
+class AsymmetricLinearGaussianBPF(LinearGaussianBPF):
+    def __init__(self, data, transition_matrix, transition_cov, observation_model,
+                 observation_cov_1, observation_cov_2, X_init, num_samples=100, seed=None):
+        """
+        BPF for Linear (in state transition) Gaussian state-space models.
+        :param data: observation data TxD_out array. To perform filter predictions replace value with np.nan
+        :param transition_matrix: state transition matrix DxD.
+        :param transition_cov: state transition covariance: vector of size D or matrix of size DxD
+        :param observation_model: function that return the observation model
+        :param observation_cov_1: likelihood covariance 1
+        :param observation_cov_2: likelihood covariance 2
+        :param X_init: initial state NxD with N==num_samples, typically samples from the prior
+        :param num_samples: number of samples
+        :param seed: random seed
+        """
+        super().__init__(data=data, transition_matrix=transition_matrix, transition_cov=transition_cov,
+                         observation_model=observation_model, observation_cov=None, X_init=X_init,
+                         num_samples=num_samples, seed=seed)
+        del self.observation_cov
+        self.observation_cov_1 = observation_cov_1
+        self.observation_cov_2 = observation_cov_2
+
+    def compute_logw(self, t):
+        """
+        logarithms of importance weights
+        :return: Nx1 numpy array
+        """
+        if np.isnan(self.data[t]).any():
+            logw = self.logw[-1]
+        else:
+            observed = np.tile(self.data[t], (self.num_samples, 1))  # NxD_out
+            predicted = self.observation_model(self.X_samples[-1])  # NxD_out
+            logw = norm.logpdf(observed, loc=predicted,
+                                        scale=np.sqrt(self.observation_cov_1))  # Nx2
+            logw_2 = norm.logpdf(observed, loc=predicted,
+                                        scale=np.sqrt(self.observation_cov_2))  # Nx2
+
+            idx_2 = np.squeeze(observed > predicted)
+            logw[idx_2] = logw_2[idx_2]
+            logw = np.sum(logw, axis=1)[:, None]
+
+        return logw
+
+
+class LinearStudentTBPF(LinearGaussianBPF):
+    def __init__(self, data, transition_matrix, transition_cov, observation_model,
+                 observation_cov, X_init, df=1.0, num_samples=100, seed=None):
+        """
+        BPF for Linear (in state transition) Gaussian state-space models.
+        :param data: observation data TxD_out array. To perform filter predictions replace value with np.nan
+        :param transition_matrix: state transition matrix DxD.
+        :param transition_cov: state transition covariance: vector of size D or matrix of size DxD
+        :param observation_model: function that return the observation model
+        :param observation_cov: likelihood standard deviation
+        :param X_init: initial state NxD with N==num_samples, typically samples from the prior
+        :param num_samples: number of samples
+        :param seed: random seed
+        """
+        super().__init__(data=data, transition_matrix=transition_matrix,
+                         transition_cov=transition_cov, observation_model=observation_model,
+                         observation_cov=observation_cov, X_init=X_init,
+                         num_samples=num_samples, seed=seed)
+        self.df = df
+
+    def compute_logw(self, t):
+        """
+        logarithms of importance weights
+        :return: Nx1 numpy array
+        """
+        if np.isnan(self.data[t]).any():
+            logw = self.logw[-1]
+        else:
+            observed = np.tile(self.data[t], (self.num_samples, 1))  # NxD_out
+            predicted = self.observation_model(self.X_samples[-1])  # NxD_out
+            logw = np.sum(student.logpdf(observed, df=self.df, loc=predicted,
+                                         scale=np.sqrt(self.observation_cov)), axis=1)[:, None]  # Nx1
+        return logw
+
+
 class RobustifiedLinearGaussianBPF(LinearGaussianBPF):
     def __init__(self, data, beta, transition_matrix, transition_cov, observation_model,
                  observation_cov, X_init, num_samples=100, seed=None):
@@ -175,4 +256,44 @@ class RobustifiedLinearGaussianBPF(LinearGaussianBPF):
             logw = self.robust_likelihood.log_likelihood(observed, loc=predicted,
                                                          scale=np.sqrt(self.observation_cov))  # NxD_out
             logw = logw[:, None]  # Nx1
+        return logw
+
+
+class AsymmetricRobustifiedLinearGaussianBPF(RobustifiedLinearGaussianBPF):
+    def __init__(self, data, beta, transition_matrix, transition_cov, observation_model,
+                 observation_cov_1, observation_cov_2, X_init, num_samples=100, seed=None):
+        """
+        Robustified BPF for Linear (in state transition) Gaussian state-space models.
+        :param data: observation data TxD_out array. To perform filter predictions replace value with np.nan
+        :param beta: tempering parameter for beta divergence
+        :param transition_matrix: state transition matrix DxD.
+        :param transition_cov: state transition covariance: vector of size D or matrix of size DxD
+        :param observation_model: function that return the observation model
+        :param observation_cov: likelihood standard deviation
+        :param X_init: initial state NxD with N==num_samples, typically samples from the prior
+        :param num_samples: number of samples
+        :param seed: random seed
+        """
+        super().__init__(data, beta, transition_matrix=transition_matrix, transition_cov=transition_cov, X_init=X_init,
+                         observation_cov=None, observation_model=observation_model, num_samples=num_samples, seed=seed)
+
+        del self.observation_cov
+        self.observation_cov_1 = observation_cov_1
+        self.observation_cov_2 = observation_cov_2
+        self.robust_likelihood = BetaRobustAsymmetricGaussian(beta)
+
+    def compute_logw(self, t):
+        """
+        logarithms of importance weights
+        :return: Nx1 numpy array
+        """
+        if np.isnan(self.data[t]).any():
+            logw = self.logw[-1]
+        else:
+            observed = np.tile(self.data[t], (self.num_samples, 1))  # NxD_out
+            predicted = self.observation_model(self.X_samples[-1])
+            logw = self.robust_likelihood.log_likelihood(observed, loc=predicted,
+                                                         scale_1=np.sqrt(self.observation_cov_1),
+                                                         scale_2=np.sqrt(self.observation_cov_2))
+            logw = logw[:, None]
         return logw
