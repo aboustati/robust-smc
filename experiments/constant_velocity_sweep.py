@@ -27,7 +27,7 @@ TIME_STEP = 0.1
 EXPLOSION_SCALE = 100.0
 
 # RNG
-rng = np.random.RandomState(RNG_SEED)
+RNG = np.random.RandomState(RNG_SEED)
 
 
 def experiment_step(simulator):
@@ -45,8 +45,10 @@ def experiment_step(simulator):
     )
     kalman.filter()
 
-    X_init = simulator.initial_state[None, ...] + cholesky(simulator.initial_cov) @ rng.randn(NUM_SAMPLES, NUM_LATENT, 1)
+    X_init = simulator.initial_state[None, ...] + cholesky(simulator.initial_cov) @ RNG.randn(NUM_SAMPLES, NUM_LATENT, 1)
     X_init = X_init.squeeze()
+
+    seed = RNG.randint(0, 1000000)
 
     # BPF Sampler
     vanilla_bpf = LinearGaussianBPF(
@@ -56,7 +58,8 @@ def experiment_step(simulator):
         transition_cov=simulator.process_cov,
         observation_cov=np.diag(simulator.observation_cov),
         X_init=X_init,
-        num_samples=NUM_SAMPLES
+        num_samples=NUM_SAMPLES,
+        seed=seed
     )
     vanilla_bpf.sample()
 
@@ -71,7 +74,8 @@ def experiment_step(simulator):
             transition_cov=simulator.process_cov,
             observation_cov=np.diag(simulator.observation_cov),
             X_init=X_init,
-            num_samples=NUM_SAMPLES
+            num_samples=NUM_SAMPLES,
+            seed=seed
         )
         robust_bpf.sample()
         robust_bpfs.append(robust_bpf)

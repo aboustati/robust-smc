@@ -11,18 +11,19 @@ from experiment_utilities import pickle_save
 # Experiment Settings
 SIMULATOR_SEED = 1992
 RNG_SEED = 24
-NUM_RUNS = 100
-BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 0.8]
+NUM_RUNS = 50 #100
+# BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 0.8]
+BETA = [0.1]
 # CONTAMINATION = [0.0, 0.01, 0.05, 0.1, 0.15]
 # CONTAMINATION = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
-CONTAMINATION = [0.4]
+CONTAMINATION = [0.1]
 
 # Sampler Settings
 NUM_LATENT = 6
-NUM_SAMPLES = 2000
+NUM_SAMPLES = 1000
 NOISE_STD = 20.0
-FINAL_TIME = 200
-TIME_STEP = 0.1
+FINAL_TIME = 1000
+TIME_STEP = 0.5
 
 # RNG
 RNG = np.random.RandomState(RNG_SEED)
@@ -37,7 +38,7 @@ def experiment_step(simulator):
     transition_cov = np.diag(simulator.process_std ** 2)
     observation_cov = simulator.observation_std ** 2
 
-    prior_std = np.array([1e-1, 1e-1, 1.0, 1e-2, 1e-2, 1e-1])
+    prior_std = np.array([1e-1, 1e-1, 1.0, 1e-2, 1e-2, 1e-1]) * 1e-9
     X_init = simulator.X0[None, :] + prior_std[None, :] * RNG.randn(NUM_SAMPLES, NUM_LATENT)
     X_init = X_init.squeeze()
 
@@ -60,7 +61,7 @@ def experiment_step(simulator):
         transition_matrix=transition_matrix,
         transition_cov=transition_cov,
         X_init=X_init,
-        df=1.0,
+        df=1.01,
         observation_model=simulator.observation_model,
         num_samples=NUM_SAMPLES,
         observation_cov=observation_cov,
@@ -121,6 +122,7 @@ def run(runs, contamination):
         observation_std=NOISE_STD,
         process_std=process_std,
         contamination_probability=contamination,
+        degrees_of_freedom=1.01,
         seed=SIMULATOR_SEED
     )
     vanilla_bpf_data, student_bpf_data, robust_bpf_data = [], [], []
@@ -140,8 +142,8 @@ def run(runs, contamination):
 if __name__ == '__main__':
     for contamination in CONTAMINATION:
         results, predictive_results = run(NUM_RUNS, contamination)
-        pickle_save(f'./results/tan/impulsive_noise_with_student_t/beta-sweep-contamination-{contamination}.pk', results)
+        pickle_save(f'./results/tan/impulsive_noise_with_finite_mean/beta-sweep-contamination-{contamination}.pk', results)
         pickle_save(
-            f'./results/tan/impulsive_noise_with_student_t/beta-predictive-sweep-contamination-{contamination}.pk',
+            f'./results/tan/impulsive_noise_with_finite_mean/beta-predictive-sweep-contamination-{contamination}.pk',
             predictive_results
         )

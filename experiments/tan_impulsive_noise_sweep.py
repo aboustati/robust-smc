@@ -1,11 +1,11 @@
 import numpy as np
 
 from robust_smc.data import ExplosiveTANSimulator
-from robust_smc.sampler import LinearGaussianBPF, RobustifiedLinearGaussianBPF
+from robust_smc.sampler import LinearGaussianBPF, RobustifiedLinearGaussianBPF, LinearStudentTBPF
 
 from tqdm import trange
 
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, median_absolute_error
 from experiment_utilities import pickle_save
 
 # Experiment Settings
@@ -13,11 +13,11 @@ SIMULATOR_SEED = 1992
 RNG_SEED = 24
 NUM_RUNS = 100
 BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 0.8]
-CONTAMINATION = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+CONTAMINATION = [0.0, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
 
 # Sampler Settings
 NUM_LATENT = 6
-NUM_SAMPLES = 1000
+NUM_SAMPLES = 2000
 NOISE_STD = 20.0
 FINAL_TIME = 200
 TIME_STEP = 0.1
@@ -52,6 +52,20 @@ def experiment_step(simulator):
     )
     vanilla_bpf.sample()
 
+    # BPF with t-likelihood
+    student_bpf = LinearStudentTBPF(
+        data=simulator.Y,
+        transition_matrix=transition_matrix,
+        transition_cov=transition_cov,
+        X_init=X_init,
+        df=1.0,
+        observation_model=simulator.observation_model,
+        num_samples=NUM_SAMPLES,
+        observation_cov=observation_cov,
+        seed=seed,
+    )
+    student_bpf.sample()
+
     # Robust Sampler
     robust_bpfs = []
     for b in BETA:
@@ -69,7 +83,7 @@ def experiment_step(simulator):
         robust_bpf.sample()
         robust_bpfs.append(robust_bpf)
 
-    return simulator, vanilla_bpf, robust_bpfs
+    return simulator, vanilla_bpf, student_bpf, robust_bpfs
 
 
 def compute_mse_and_coverage(simulator, sampler):
@@ -86,6 +100,16 @@ def compute_mse_and_coverage(simulator, sampler):
     return scores
 
 
+def compute_predictive_score(simulator, sampler):
+    Y_pred = np.stack([sampler.observation_model(X) for X in sampler.X_samples]).mean(axis=1)
+
+    m = np.median(simulator.Y, axis=0)
+    w = m / m.sum()
+
+    score = median_absolute_error(simulator.Y, Y_pred, multioutput=1 / w)
+    return score
+
+
 def run(runs, contamination):
     process_std = None
 
@@ -97,16 +121,25 @@ def run(runs, contamination):
         contamination_probability=contamination,
         seed=SIMULATOR_SEED
     )
-    vanilla_bpf_data, robust_bpf_data = [], []
+    vanilla_bpf_data, student_bpf_data, robust_bpf_data = [], [], []
+    robust_predictive_data = []
     for _ in trange(runs):
-        simulator, vanilla_bpf, robust_bpfs = experiment_step(simulator)
+        simulator, vanilla_bpf, student_bpf, robust_bpfs = experiment_step(simulator)
         vanilla_bpf_data.append(compute_mse_and_coverage(simulator, vanilla_bpf))
+        student_bpf_data.append(compute_mse_and_coverage(simulator, student_bpf))
         robust_bpf_data.append([compute_mse_and_coverage(simulator, robust_bpf) for robust_bpf in robust_bpfs])
 
-    return np.array(vanilla_bpf_data), np.array(robust_bpf_data)
+        robust_predictive_data.append([compute_predictive_score(simulator, robust_bpf) for robust_bpf in robust_bpfs])
+
+    return (np.array(vanilla_bpf_data), np.array(student_bpf_data), np.array(robust_bpf_data)), \
+           np.array(robust_predictive_data)
 
 
 if __name__ == '__main__':
     for contamination in CONTAMINATION:
-        results = run(NUM_RUNS, contamination)
-        pickle_save(f'./results/tan/impulsive_noise_long_run/beta-sweep-contamination-{contamination}.pk', results)
+        results, predictive_results = run(NUM_RUNS, contamination)
+        pickle_save(f'./results/tan/impulsive_noise_with_student_t/beta-sweep-contamination-{contamination}.pk', results)
+        pickle_save(
+            f'./results/tan/impulsive_noise_with_student_t/beta-predictive-sweep-contamination-{contamination}.pk',
+            predictive_results
+        )
