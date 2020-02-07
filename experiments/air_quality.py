@@ -13,7 +13,7 @@ from experiment_utilities import pickle_save
 
 # Experiment Settings
 RNG_SEED = 2235
-NUM_RUNS = 2#100
+NUM_RUNS = 100
 # BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2]
 BETA = [0.005, 0.01, 0.05, 0.1, 0.2]
 
