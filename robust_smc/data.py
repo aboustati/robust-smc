@@ -368,4 +368,3 @@ class SensorLocalisation:
         return np.stack(Y).squeeze(axis=-1)
 
 
-
