@@ -156,6 +156,7 @@ class LinearGaussianAPF(LinearGaussianBPF):
     def _reset(self):
         super()._reset()
         self.auxiliary_log_likelihood = 0
+        self.filtering_approximation = []
 
     def proposal_sample(self, X_prev, observations=None):
         """
@@ -199,6 +200,24 @@ class LinearGaussianAPF(LinearGaussianBPF):
 
         samples = auxiliary_samples + noise
         return samples
+
+    def sample(self):
+        self._reset()
+        self.X_samples.append(self.proposal_sample(self.X_init, observations=None))
+        self.logw.append(self.compute_logw(0))
+        for t in range(self.time_steps - 1):
+            # Resample
+            w = self.normalised_weights(self.logw[-1])
+            self.X_trajectories.append(self.X_samples[-1])
+            self.filtering_approximation.append(self.multinomial_resampling(w, self.X_trajectories[-1]))
+            # Sample
+            self.X_samples.append(self.proposal_sample(self.X_trajectories[-1], observations=self.data[t + 1]))
+            # Weight
+            self.logw.append(self.compute_logw(t + 1))
+
+        self.X_trajectories.append(self.X_samples[-1])
+        w = self.normalised_weights(self.logw[-1])
+        self.filtering_approximation.append(self.multinomial_resampling(w, self.X_trajectories[-1]))
 
     def compute_logw(self, t):
         """
