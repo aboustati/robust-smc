@@ -13,8 +13,10 @@ from experiment_utilities import pickle_save
 # Experiment Settings
 SIMULATOR_SEED = 1992
 RNG_SEED = 24
+# NUM_RUNS = 100
 NUM_RUNS = 50
-BETA = [0.005, 0.01, 0.05, 0.1, 0.2]
+# BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2] #, 0.5, 0.8]
+BETA = [0.005, 0.01, 0.05, 0.1, 0.2] #, 0.5, 0.8]
 CONTAMINATION = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
 
 # Sampler Settings
@@ -42,7 +44,7 @@ def experiment_step(simulator):
     X_init = X_init.squeeze()
 
     # BPF Sampler
-    vanilla_apf = LinearGaussianAPF(
+    vanilla_bpf = LinearGaussianBPF(
         data=Y,
         transition_matrix=transition_matrix,
         observation_model=simulator.observation_model,
@@ -52,12 +54,26 @@ def experiment_step(simulator):
         num_samples=NUM_SAMPLES,
         seed=seed
     )
-    vanilla_apf.sample()
+    vanilla_bpf.sample()
+
+    # BPF with t-likelihood
+    student_bpf = LinearStudentTBPF(
+        data=simulator.Y,
+        transition_matrix=transition_matrix,
+        transition_cov=transition_cov,
+        X_init=X_init,
+        df=1.01,
+        observation_model=simulator.observation_model,
+        num_samples=NUM_SAMPLES,
+        observation_cov=observation_cov,
+        seed=seed,
+    )
+    student_bpf.sample()
 
     # Robust Sampler
-    robust_apfs = []
+    robust_bpfs = []
     for b in BETA:
-        robust_apf = RobustifiedLinearGaussianAPF(
+        robust_bpf = RobustifiedLinearGaussianBPF(
             data=Y,
             beta=b,
             transition_matrix=simulator.transition_matrix,
@@ -68,14 +84,14 @@ def experiment_step(simulator):
             num_samples=NUM_SAMPLES,
             seed=seed
         )
-        robust_apf.sample()
-        robust_apfs.append(robust_apf)
+        robust_bpf.sample()
+        robust_bpfs.append(robust_bpf)
 
-    return simulator, vanilla_apf, robust_apfs
+    return simulator, vanilla_bpf, student_bpf, robust_bpfs
 
 
 def compute_mse_and_coverage(simulator, sampler):
-    trajectories = np.stack(sampler.filtering_approximation)
+    trajectories = np.stack(sampler.X_trajectories)
     mean = trajectories.mean(axis=1)
     std = np.std(trajectories, axis=1)
     quantiles = np.quantile(trajectories, q=[0.05, 0.95], axis=1)
@@ -128,13 +144,15 @@ def run(runs, contamination):
     }
 
     for _ in trange(runs):
-        simulator, vanilla_apf, robust_apfs = experiment_step(simulator)
-        metrics['vanilla_apf'].append(compute_mse_and_coverage(simulator, vanilla_apf))
-        metrics['robust_apfs'].append([compute_mse_and_coverage(simulator, robust_apf) for robust_apf in robust_apfs])
-        
-        predictive_results['vanilla_apf'].append(compute_predictive_score(simulator, vanilla_apf))
-        predictive_results['robust_apfs'].append(
-            [compute_predictive_score(simulator, robust_apf) for robust_apf in robust_apfs]
+        simulator, vanilla_bpf, vanilla_apf, student_bpf, robust_bpfs, robust_apfs = experiment_step(simulator)
+        metrics['vanilla_bpf'].append(compute_mse_and_coverage(simulator, vanilla_bpf))
+        metrics['student_bpf'].append(compute_mse_and_coverage(simulator, student_bpf))
+        metrics['robust_bpfs'].append([compute_mse_and_coverage(simulator, robust_bpf) for robust_bpf in robust_bpfs])
+
+        predictive_results['vanilla_bpf'].append(compute_predictive_score(simulator, vanilla_bpf))
+        predictive_results['student_bpf'].append(compute_predictive_score(simulator, student_bpf))
+        predictive_results['robust_bpfs'].append(
+            [compute_predictive_score(simulator, robust_bpf) for robust_bpf in robust_bpfs]
         )
 
     return metrics, predictive_results
@@ -143,7 +161,7 @@ def run(runs, contamination):
 if __name__ == '__main__':
     for contamination in CONTAMINATION:
         results, predictive_results = run(NUM_RUNS, contamination)
-        results_path = './results/tan/neurips_impulsive_noise_apf_and_3000_samples/'
+        results_path = './results/tan/neurips_impulsive_noise_with_bpf_and_3000_samples/'
         if not os.path.exists(results_path):
             os.makedirs(results_path)
         pickle_save(os.path.join(results_path, f'beta-sweep-contamination-{contamination}.pk'), results)
