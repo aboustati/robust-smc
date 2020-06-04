@@ -144,7 +144,7 @@ def run(runs, contamination):
     }
 
     for _ in trange(runs):
-        simulator, vanilla_bpf, vanilla_apf, student_bpf, robust_bpfs, robust_apfs = experiment_step(simulator)
+        simulator, vanilla_bpf, student_bpf, robust_bpfs = experiment_step(simulator)
         metrics['vanilla_bpf'].append(compute_mse_and_coverage(simulator, vanilla_bpf))
         metrics['student_bpf'].append(compute_mse_and_coverage(simulator, student_bpf))
         metrics['robust_bpfs'].append([compute_mse_and_coverage(simulator, robust_bpf) for robust_bpf in robust_bpfs])
