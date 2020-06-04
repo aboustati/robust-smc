@@ -13,13 +13,15 @@ from experiment_utilities import pickle_save
 # Experiment Settings
 SIMULATOR_SEED = 1992
 RNG_SEED = 24
-NUM_RUNS = 100
-BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 0.8]
+# NUM_RUNS = 100
+NUM_RUNS = 50
+# BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2] #, 0.5, 0.8]
+BETA = [0.005, 0.01, 0.05, 0.1, 0.2] #, 0.5, 0.8]
 CONTAMINATION = [0.0, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
 
 # Sampler Settings
 NUM_LATENT = 6
-NUM_SAMPLES = 2000
+NUM_SAMPLES = 4000
 NOISE_STD = 20.0
 FINAL_TIME = 200
 TIME_STEP = 0.1
@@ -195,7 +197,7 @@ def run(runs, contamination):
 if __name__ == '__main__':
     for contamination in CONTAMINATION:
         results, predictive_results = run(NUM_RUNS, contamination)
-        results_path = './results/tan/neurips_impulsive_noise_with_student_t/'
+        results_path = './results/tan/neurips_impulsive_noise_with_apf_and_4000_samples/'
         if not os.path.exists(results_path):
             os.makedirs(results_path)
         pickle_save(os.path.join(results_path, f'beta-sweep-contamination-{contamination}.pk'), results)

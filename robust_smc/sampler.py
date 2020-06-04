@@ -175,7 +175,7 @@ class LinearGaussianAPF(LinearGaussianBPF):
             noiseless = self.observation_model(noiseless)
             self.auxiliary_log_likelihood = np.sum(norm.logpdf(
                 observed, loc=noiseless, scale=np.sqrt(self.observation_cov)
-            ), axis=1)[:, None]
+            ), axis=1)[:, None] + np.log(1.005)
             auxiliary_logw = self.logw[-1] + self.auxiliary_log_likelihood
             auxiliary_weights = self.normalised_weights(auxiliary_logw)
 
@@ -385,7 +385,7 @@ class RobustifiedLinearGaussianAPF(LinearGaussianAPF):
             noiseless = self.observation_model(noiseless)
             self.auxiliary_log_likelihood = self.robust_likelihood.log_likelihood(
                 observed, loc=noiseless, scale=np.sqrt(self.observation_cov)
-            )[:, None]  # NxD_out
+            )[:, None] + np.log(1.005)  # NxD_out
             auxiliary_logw = self.logw[-1] + self.auxiliary_log_likelihood
             auxiliary_weights = self.normalised_weights(auxiliary_logw)
 
