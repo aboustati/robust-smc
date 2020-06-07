@@ -11,18 +11,20 @@ from sklearn.metrics import median_absolute_error
 from experiment_utilities import pickle_save
 
 # Experiment Settings
-SIMULATOR_SEED = 1400
+# SIMULATOR_SEED = 1400
+SIMULATOR_SEED = 2000
 RNG_SEED = 1218
 NUM_RUNS = 100
 BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 0.8]
-# CONTAMINATION = [0.05, 0.1] #, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
-CONTAMINATION = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+CONTAMINATION = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+# CONTAMINATION = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
 
 # Sampler Settings
 NUM_LATENT = 4
 NUM_SAMPLES = 1000
 NOISE_VAR = 1.0
-FINAL_TIME = 100
+# FINAL_TIME = 100
+FINAL_TIME = 10
 TIME_STEP = 0.1
 EXPLOSION_SCALE = 100.0
 
@@ -87,10 +89,16 @@ def run(runs, contamination):
 
 
 if __name__ == '__main__':
+    # for contamination in CONTAMINATION:
+    #     results = run(NUM_RUNS, contamination)
+    #     pickle_save(
+    #         f'./results/constant-velocity/impulsive_noise_predictive/beta-sweep-contamination-{contamination}.pk',
+    #         results
+    #     )
+
     for contamination in CONTAMINATION:
         results = run(NUM_RUNS, contamination)
         pickle_save(
-            f'./results/constant-velocity/impulsive_noise_predictive/beta-sweep-contamination-{contamination}.pk',
+            f'./results/constant-velocity/impulsive_noise_predictive_rebuttal_alternative_seed/beta-sweep-contamination-{contamination}.pk',
             results
         )
-

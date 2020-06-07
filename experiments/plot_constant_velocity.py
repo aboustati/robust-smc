@@ -19,6 +19,7 @@ rc('font', family='serif')
 
 BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 0.8]
 CONTAMINATION = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+# CONTAMINATION = [0.1]
 LABELS = ['Kalman Filter', 'BPF'] + [r'$\beta$ = {}'.format(b) for b in BETA]
 TITLES = [
     'Displacement in $x$ direction',
@@ -323,12 +324,16 @@ def individual_box_plot(contamination, state, results_file, figsize, save_path=N
 def aggregate_box_plot(contamination, results_file, figsize, save_path=None):
 
     predictive_scores = pickle_load(
-        f'./results/constant-velocity/impulsive_noise_predictive/beta-sweep-contamination-{contamination}.pk'
+        f'./results/constant-velocity/impulsive_noise_predictive_rebuttal_alternative_seed/beta-sweep-contamination-{contamination}.pk'
     )
+
+    print(predictive_scores.shape)
 
     best_beta = np.argmin(predictive_scores, axis=1)
 
     majority_vote = mode(best_beta)
+
+    print(majority_vote.mode)
 
     fig, ax = plt.subplots(nrows=2, ncols=1, figsize=figsize, dpi=150, sharex=True)
     plt.subplots_adjust(hspace=0.05)
@@ -422,7 +427,6 @@ def aggregate_box_plot(contamination, results_file, figsize, save_path=None):
         r'Wiener velocity: aggregate metrics for $p_c = {}$'.format(contamination),
         fontsize=14
     )
-
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
 
@@ -439,16 +443,6 @@ if __name__ == '__main__':
     #         #     save_path=f'./figures/constant-velocity/impulsive_noise/{metric}/beta-sweep-contamination-{contamination}.pdf'
     #         # )
     #
-    #         violin_plot(
-    #             contamination=contamination,
-    #             results_file=f'./results/constant-velocity/impulsive_noise/beta-sweep-contamination-{contamination}.pk',
-    #             nrows=4,
-    #             ncols=1,
-    #             figsize=(20, 14),
-    #             metric=metric,
-    #             save_path=f'./figures/constant-velocity/impulsive_noise/{metric}/violin_beta-sweep-contamination-{contamination}.pdf'
-    #         )
-
     # for state in range(NUM_LATENT):
     #     # individual_violin_plot(
     #     #     contamination=0.1,

@@ -27,11 +27,16 @@ NOISE_STD = 20.0
 FINAL_TIME = 200
 TIME_STEP = 0.1
 
-BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2]#, 0.5, 0.8]
-# CONTAMINATION = [0.0, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35]#, 0.4]
+# BETA = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2] #, 0.5, 0.8]
+# # CONTAMINATION = [0.0, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35]#, 0.4]
+# CONTAMINATION = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+
+BETA = [0.005, 0.01, 0.05, 0.1, 0.2]
 CONTAMINATION = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
 
-LABELS = np.array(['BPF', 't-BPF'] + [r'$\beta$ = {}'.format(b) for b in BETA])
+LABELS = np.array(['BPF', 't-BPF'] + [r'$\beta$-BPF = {}'.format(b) for b in BETA] + \
+         ['APF'] + [r'$\beta$-APF = {}'.format(b) for b in BETA])
+print(len(LABELS))
 TITLES = [
     'Displacement in $x$ direction',
     'Displacement in $y$ direction',
@@ -42,6 +47,33 @@ TITLES = [
 ]
 
 NUM_LATENT = 6
+
+
+def get_mse_and_coverage(results_dict):
+    vanilla_bpf_data = np.stack([item['metrics'] for item in results_dict['vanilla_bpf']])
+    student_bpf_data = np.stack([item['metrics'] for item in results_dict['student_bpf']])
+    # vanilla_apf_data = np.stack([item['metrics'] for item in results_dict['student_bpf']])
+    robust_bpf_data = np.stack([[item['metrics'] for item in beta] for beta in results_dict['robust_bpfs']])
+    # robust_apf_data = np.stack([[item['metrics'] for item in beta] for beta in results_dict['robust_apfs']])
+    concatenated_data = np.concatenate([
+        vanilla_bpf_data[:, None, :, :],
+        # vanilla_apf_data[:, None, :, :],
+        student_bpf_data[:, None, :, :],
+        robust_bpf_data[:, :, :, :],
+        # robust_apf_data[:, :, :, :]
+    ], axis=1)
+    return concatenated_data
+
+
+def get_apf_mse_and_coverage(results_dict):
+    vanilla_apf_data = np.stack([item['metrics'] for item in results_dict['vanilla_apf']])
+    robust_apf_data = np.stack([[item['metrics'] for item in beta] for beta in results_dict['robust_apfs']])
+    print(robust_apf_data.shape)
+    concatenated_data = np.concatenate([
+        vanilla_apf_data[:, None, :, :],
+        robust_apf_data[:, :, :, :]
+    ], axis=1)
+    return concatenated_data
 
 
 def plot_metrics(results_path, figsize, save_path=None):
@@ -134,9 +166,9 @@ def plot_metrics(results_path, figsize, save_path=None):
         plt.savefig(save_file, bbox_inches='tight')
 
 
-def plot_aggregate_latent(results_path, figsize, save_path=None):
-    selected_models = [0, 1, 7, 8]
-    colors = ['C1', 'C2', 'C6', 'C0']
+def plot_aggregate_latent(results_path, apf_results_path, figsize, save_path=None):
+    selected_models = [0, 1, 5, 7, 11]
+    colors = ['C1', 'C2', 'C0', 'C6', 'C3']
 
     labels = LABELS[selected_models]
     positions = np.arange(1, len(selected_models) + 1)
@@ -160,12 +192,6 @@ def plot_aggregate_latent(results_path, figsize, save_path=None):
 
         plot_data = []
         for contamination in CONTAMINATION:
-            predictive_scores = pickle_load(
-                os.path.join(results_path, f'beta-predictive-sweep-contamination-{contamination}.pk')
-            )
-            best_beta = np.argmin(predictive_scores, axis=1)
-            majority_vote = mode(best_beta)
-
             simulator = ExplosiveTANSimulator(
                 final_time=FINAL_TIME,
                 time_step=TIME_STEP,
@@ -181,13 +207,13 @@ def plot_aggregate_latent(results_path, figsize, save_path=None):
                 normaliser = 1
 
             results_file = os.path.join(results_path, f'beta-sweep-contamination-{contamination}.pk')
-            vanilla_bpf_data, student_bpf_data, robust_bpf_data = pickle_load(results_file)
-            concatenated_data = np.concatenate([
-                vanilla_bpf_data[:, None, :, metric_idx],
-                student_bpf_data[:, None, :, metric_idx],
-                robust_bpf_data[:, :, :, metric_idx]
-            ], axis=1)
-            concatenated_data = concatenated_data / normaliser  # contamination x N x models x num_latent
+            apf_results_file = os.path.join(apf_results_path, f'beta-sweep-contamination-{contamination}.pk')
+            data = pickle_load(results_file)
+            apf_data = pickle_load(apf_results_file)
+            concatenated_data = np.concatenate([get_mse_and_coverage(data), get_apf_mse_and_coverage(apf_data)], axis=1)
+
+            print(concatenated_data.shape)
+            concatenated_data = concatenated_data[:, :, :, metric_idx] / normaliser  # contamination x N x models x num_latent
             plot_data.append(concatenated_data)
 
         plot_data = np.stack(plot_data)
@@ -198,7 +224,7 @@ def plot_aggregate_latent(results_path, figsize, save_path=None):
 
         ax.set_yscale(scale)
         for i in range(len(CONTAMINATION)):
-            ax.axvline((i * 7) + 3, color='gold', ls='-.', zorder=0)
+            # ax.axvline((i * 7) + 3, color='gold', ls='-.', zorder=0)
             bplot = ax.boxplot(plot_data[i, :, selected_models].T, positions=(i * 7) + positions,
                                sym='x', patch_artist=True, manage_ticks=False, whis='range',
                                widths=0.6, flierprops={'markersize': 4})
@@ -216,29 +242,24 @@ def plot_aggregate_latent(results_path, figsize, save_path=None):
     axes[0].set_title('TAN experiment: aggregate metrics', fontsize=14)
     axes[-1].set_xlabel(r'Contamination probability $p_c$')
     axes[-1].legend(handles=bplot['boxes'], loc='center', bbox_to_anchor=(0.5, -0.4), frameon=False, ncol=6)
+    # plt.show()
     if save_path:
         save_file = os.path.join(save_path, f'aggregate_plot.pdf')
         plt.savefig(save_file, bbox_inches='tight')
 
 
 if __name__ == '__main__':
-    plot_metrics(
-        f'./results/tan/impulsive_noise_with_student_t/',
-        figsize=(20, 8),
-        save_path='./figures/tan/impulsive_noise_with_student_t/variation_with_contamination/'
-    )
-    #
-    # for latent in range(6):
-    #     plot_single_latent(
-    #         f'./results/tan/impulsive_noise_with_student_t/',
-    #         latent=latent,
-    #         figsize=(8, 5),
-    #         save_path='./figures/tan/impulsive_noise_with_student_t/variation_with_contamination/'
-    #     )
+    # plot_metrics(
+    #     f'./results/tan/neurips_impulsive_noise_with_student_t/',
+    #     figsize=(20, 8),
+    #     # save_path='./figures/tan/impulsive_noise_with_student_t/variation_with_contamination/',
+    #     save_path=None
+    # )
 
     plot_aggregate_latent(
-        f'./results/tan/impulsive_noise_with_student_t/',
+        f'./results/tan/neurips_impulsive_noise_with_bpf_and_3000_samples/',
+        f'./results/tan/neurips_impulsive_noise_apf_and_3000_samples/',
         figsize=(8, 5),
-        save_path='./figures/tan/impulsive_noise_with_student_t/variation_with_contamination/'
+        save_path='./figures/tan/impulsive_noise_apf/variation_with_contamination/'
     )
 
